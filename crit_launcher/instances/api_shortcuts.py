@@ -4,11 +4,12 @@ import base64
 import hashlib
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
-from ..config.paths import APP_DIR, DATA_DIR, ENTRY_SCRIPT, IS_LINUX
+from ..config.paths import APP_DIR, DATA_DIR, ENTRY_SCRIPT, IS_LINUX, IS_OSX
 from ..core.logs import log_exception
 from ..core.system import CREATE_NO_WINDOW
 from .store import read_instance_meta, sanitize_instance_name
@@ -72,6 +73,29 @@ class ShortcutsApi:
             first = first or path
         return {"success": True, "path": str(first)}
 
+    def _create_macos_shortcut(self, instance_name):
+        """Write a Finder-launchable .command file; frozen builds open the app bundle directly."""
+        if getattr(sys, "frozen", False):
+            executable = Path(sys.executable).resolve()
+            app_bundle = next((parent for parent in executable.parents if parent.suffix == ".app"), None)
+            if app_bundle:
+                command = ["/usr/bin/open", "-n", "-a", str(app_bundle), "--args",
+                           "--launch-instance", instance_name]
+            else:
+                command = [str(executable), "--launch-instance", instance_name]
+        else:
+            command = [sys.executable, str(ENTRY_SCRIPT), "--launch-instance", instance_name]
+
+        desktop = Path.home() / "Desktop"
+        desktop.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", instance_name).strip("_") or "instance"
+        digest = hashlib.sha1(instance_name.encode("utf-8")).hexdigest()[:6]
+        shortcut_path = desktop / f"Crit Launcher - {safe}-{digest}.command"
+        script = "#!/bin/sh\nexec " + " ".join(shlex.quote(str(arg)) for arg in command) + "\n"
+        shortcut_path.write_text(script, encoding="utf-8")
+        shortcut_path.chmod(0o755)
+        return {"success": True, "path": str(shortcut_path)}
+
     def create_desktop_shortcut(self, instance_name, icon_data=None):
         try:
             if IS_LINUX:
@@ -79,8 +103,13 @@ class ShortcutsApi:
                 if not read_instance_meta(instance_name):
                     return {"success": False, "error": "Instance not found."}
                 return self._create_linux_shortcut(instance_name, icon_data)
+            if IS_OSX:
+                instance_name = sanitize_instance_name(instance_name)
+                if not read_instance_meta(instance_name):
+                    return {"success": False, "error": "Instance not found."}
+                return self._create_macos_shortcut(instance_name)
             if os.name != "nt":
-                return {"success": False, "error": "Desktop shortcuts are only supported on Windows."}
+                return {"success": False, "error": "Desktop shortcuts are not supported on this platform."}
             instance_name = sanitize_instance_name(instance_name)
             if not read_instance_meta(instance_name):
                 return {"success": False, "error": "Instance not found."}

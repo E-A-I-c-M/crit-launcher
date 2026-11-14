@@ -60,6 +60,8 @@ def ensure_home_assets() -> dict:
 def prepare_page() -> Path:
     """Return the index.html to load. Compiled builds get a fresh copy in PAGE_DIR so assets/ sits beside it."""
     src = RESOURCE_DIR / "index.html"
+    # index.linux.html is the Linux port's own UI variant, not a generic non-Windows page.
+    # macOS uses the normal page and Cocoa's native title bar; the custom frame is Windows-only.
     if IS_LINUX and (RESOURCE_DIR / "index.linux.html").is_file():
         src = RESOURCE_DIR / "index.linux.html"
     if PAGE_DIR == RESOURCE_DIR:

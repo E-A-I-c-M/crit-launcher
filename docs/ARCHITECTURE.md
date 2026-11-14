@@ -14,9 +14,9 @@ crit_launcher/
   config/                paths.py (every folder/file location) and settings.py
   accounts/ skins/ instances/ importers/ addons/ servers/
   minecraft/ horizon/ launch/ updates/ news/ discord/ ui/     one package per feature
-index.html               Windows UI          index.linux.html   Linux UI (picked automatically on Linux)
+index.html               Standard UI          index.linux.html   Linux UI variant (picked automatically on Linux)
 assets/                  UI artwork (the path is also a raw.githubusercontent URL, do not move it)
-packaging/               windows/critsetup.iss, linux/ (AppImage build)
+packaging/               windows/, linux/ (AppImage), macos/ (.app build)
 tests/                   unit tests + API-surface checks
 ```
 
@@ -37,10 +37,12 @@ tests/                   unit tests + API-surface checks
 ## Debugging
 
 * Log file: `<data dir>/launcher.log` (data dir: `launcher_data/` beside the exe on Windows,
-  `~/.local/share/crit-launcher` on Linux, or `$CRIT_LAUNCHER_DATA`).
+  `~/.local/share/crit-launcher` on Linux, `~/Library/Application Support/crit-launcher` on macOS,
+  or the directory set by `$CRIT_LAUNCHER_DATA`).
 * A traceback names the feature file directly, e.g. `servers/api_process.py`, `addons/curseforge.py`.
 * To find the code behind a page call, search the table below for the method name.
-* Run from source: `python crit.py` (needs `pywebview`; Linux also needs PyQt6 + PyQt6-WebEngine).
+* Run from source: `python crit.py` (needs `pywebview`, Pillow, and psutil; macOS uses Cocoa/PyObjC,
+  while Linux also needs PyQt6 + PyQt6-WebEngine).
 * Tests: `python -m unittest discover -s tests` (no GUI needed).
 
 ## Adding a feature

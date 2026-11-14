@@ -28,14 +28,16 @@ RESOURCE_DIR = _resource_dir()
 APP_DIR = _app_dir()
 
 IS_LINUX = sys.platform.startswith("linux")
+IS_OSX = sys.platform == "darwin"
 
 
 def _default_data_dir() -> Path:
-    """Windows keeps data beside the exe. On Linux the app often lives in a read-only
-    AppImage mount, so data goes to the XDG data directory instead."""
+    """Keep launcher data out of read-only application bundles on Linux and macOS."""
     if IS_LINUX:
         base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
         return Path(base) / "crit-launcher"
+    if IS_OSX:
+        return Path.home() / "Library" / "Application Support" / "crit-launcher"
     return APP_DIR / "launcher_data"
 
 

@@ -6,7 +6,7 @@ import sys
 import time
 
 from ..bootstrap import init as init_environment
-from ..config.paths import IS_LINUX
+from ..config.paths import IS_LINUX, IS_OSX
 from ..config.settings import launcher_window_geometry, settings_store
 from ..core.logs import log_exception
 from ..ui.page import prepare_page, start_asset_download
@@ -75,4 +75,11 @@ def main():
     except Exception:
         log_exception("hook shown event")
 
-    webview.start(gui="qt" if IS_LINUX else None, debug=False)
+    # macOS uses pywebview's native Cocoa/WKWebView backend; Linux ships Qt in its AppImage.
+    if IS_LINUX:
+        gui = "qt"
+    elif IS_OSX:
+        gui = "cocoa"
+    else:
+        gui = None
+    webview.start(gui=gui, debug=False)

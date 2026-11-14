@@ -5,7 +5,7 @@ import threading
 import time
 from pathlib import Path
 
-from ..config.paths import DATA_DIR, IS_LINUX
+from ..config.paths import DATA_DIR, IS_LINUX, IS_OSX
 from ..config.settings import settings_store
 from ..core.http import http_download
 from ..core.logs import log_exception
@@ -48,6 +48,9 @@ class UpdatesApi:
                 log_exception("open releases page")
             return {"success": False,
                     "error": "Opened the releases page in your browser. Download the new AppImage there."}
+        if IS_OSX:
+            return {"success": False,
+                    "error": "Automatic updating isn't available on macOS. Install a newer macOS app manually."}
         if os.name != "nt":
             return {"success": False, "error": "Automatic updating is only available on Windows."}
         threading.Thread(target=self._update_worker, daemon=True).start()

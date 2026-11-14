@@ -6,12 +6,13 @@ import threading
 import urllib.request
 from pathlib import Path
 
-from ..config.paths import APP_DIR, DATA_DIR, IS_LINUX, PAGE_DIR, RESOURCE_DIR
+from ..config.paths import APP_DIR, DATA_DIR, IS_LINUX, IS_OSX, PAGE_DIR, RESOURCE_DIR
 from ..core.http import USER_AGENT
 from ..core.logs import log_exception
 
 
-UI_ASSETS_DIR = (DATA_DIR / "ui_assets") if IS_LINUX else (APP_DIR / "assets")
+# Frozen app bundles are not a writable home for assets on either Unix desktop OS.
+UI_ASSETS_DIR = (DATA_DIR / "ui_assets") if (IS_LINUX or IS_OSX) else (APP_DIR / "assets")
 _ASSETS_RAW = "https://raw.githubusercontent.com/snigglaberry/crit-launcher/main/assets/"
 HOME_BG_ASSETS = {                       
     "dark_bg.png": _ASSETS_RAW + "dark_Bg.png",
