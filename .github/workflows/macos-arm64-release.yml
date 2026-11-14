@@ -41,8 +41,11 @@ jobs:
             exit 1
           fi
 
-      - name: Verify the DMG
-        run: hdiutil verify dist/macos/Crit-Launcher-Installer.dmg
+      - name: Verify the app entitlements and DMG
+        run: |
+          test -f "dist/macos/Crit Launcher.app/Contents/Resources/entitlements.plist"
+          plutil -lint "dist/macos/Crit Launcher.app/Contents/Resources/entitlements.plist"
+          hdiutil verify dist/macos/Crit-Launcher-Installer.dmg
 
       - name: Attach the DMG and publish the release
         env:

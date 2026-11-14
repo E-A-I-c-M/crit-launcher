@@ -1,6 +1,7 @@
 """Regression tests for macOS path selection and launch helpers."""
 
 import os
+import plistlib
 import subprocess
 import sys
 import tempfile
@@ -72,6 +73,18 @@ class MacOSPathTests(unittest.TestCase):
 
 
 class MacOSIntegrationTests(unittest.TestCase):
+    def test_entitlements_are_bundled_and_used_for_signing(self):
+        entitlements_path = ROOT / "packaging" / "macos" / "entitlements.plist"
+        entitlements = plistlib.loads(entitlements_path.read_bytes())
+        self.assertTrue(entitlements["com.apple.security.files.user-selected.read-write"])
+        self.assertTrue(entitlements["com.apple.security.files.downloads.read-write"])
+        self.assertTrue(entitlements["com.apple.security.network.client"])
+        self.assertNotIn("com.apple.security.app-sandbox", entitlements)
+
+        build_script = (ROOT / "packaging" / "macos" / "build.sh").read_text(encoding="utf-8")
+        self.assertIn('$APP/Contents/Resources/entitlements.plist', build_script)
+        self.assertIn('--entitlements "$ENTITLEMENTS_APP"', build_script)
+
     def test_packaged_icns_has_expected_png_sizes(self):
         data = (ROOT / "packaging" / "macos" / "crit.icns").read_bytes()
         self.assertEqual(data[:4], b"icns")

@@ -70,8 +70,13 @@ if [[ ! -d "$APP" ]]; then
     exit 1
 fi
 
-echo "==> Applying an ad-hoc code signature"
-/usr/bin/codesign --force --deep --sign - "$APP"
+echo "==> Embedding entitlements and applying an ad-hoc code signature"
+ENTITLEMENTS_SOURCE="$ROOT/packaging/macos/entitlements.plist"
+ENTITLEMENTS_APP="$APP/Contents/Resources/entitlements.plist"
+mkdir -p "$(dirname "$ENTITLEMENTS_APP")"
+cp "$ENTITLEMENTS_SOURCE" "$ENTITLEMENTS_APP"
+/usr/bin/plutil -lint "$ENTITLEMENTS_APP"
+/usr/bin/codesign --force --deep --sign - --entitlements "$ENTITLEMENTS_APP" "$APP"
 /usr/bin/codesign --verify --deep --strict "$APP"
 echo "==> Preparing the drag-and-drop disk image"
 STAGING="$WORK/dmg-root"
