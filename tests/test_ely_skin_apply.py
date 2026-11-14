@@ -60,6 +60,7 @@ class _FakeWindow:
         self.confirmations = []
         self.loaded_urls = []
         self.titles = []
+        self.show_count = 0
         self.destroyed = False
 
     def get_current_url(self):
@@ -87,7 +88,7 @@ class _FakeWindow:
         self.titles.append(title)
 
     def show(self):
-        pass
+        self.show_count += 1
 
     def load_url(self, url):
         self.loaded_urls.append(url)
@@ -104,6 +105,8 @@ class _FakeWindow:
 
 class ElyWebsiteSkinTests(unittest.TestCase):
     def setUp(self):
+        ely_skins._SITE_SESSION = None
+        self.addCleanup(setattr, ely_skins, "_SITE_SESSION", None)
         self.account = {"type": "ely", "name": "grokkyguy", "mc_token": "launcher-token"}
         self.png = _png()
         self.window = _FakeWindow()
@@ -188,6 +191,36 @@ class ElyWebsiteSkinTests(unittest.TestCase):
         self.assertFalse(self.window.destroyed)
         self.assertIn("switch accounts", self.window.titles[-1].lower())
 
+    def test_session_probe_failure_does_not_proceed_to_confirmation(self):
+        self.window.probe_results = [
+            {"status": "failed", "message": "POST /skins/remove/0: HTTP 404"}
+        ]
+
+        result = ely_skins.apply_ely_skin(self.account, self.png, "classic")
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "POST /skins/remove/0: HTTP 404")
+        self.assertEqual(self.window.confirmations, [])
+        self.assertFalse(any("call('/skins/upload'" in script for script in self.window.scripts))
+
+    def test_reuses_open_window_after_cancelled_confirmation(self):
+        self.window.confirm = False
+        self.window.probe_results = [{"status": "done"}, {"status": "done"}]
+
+        cancelled = ely_skins.apply_ely_skin(self.account, self.png, "classic")
+        self.assertFalse(cancelled["success"])
+        self.assertFalse(self.window.destroyed)
+
+        self.window.confirm = True
+        result = ely_skins.apply_ely_skin(self.account, self.png, "classic")
+
+        self.assertEqual(result, {"success": True})
+        self.assertEqual(len(self.create_window_calls), 1)
+        self.assertEqual(self.window.show_count, 1)
+        self.assertEqual(len(self.window.confirmations), 2)
+        self.assertEqual(len(self.window.scripts), 5)
+        self.assertTrue(self.window.destroyed)
+
     def test_reauthentication_after_upload_does_not_upload_a_duplicate(self):
         self.window.model_results = [{"status": "signed_out"}, {"status": "done"}]
         self.window.probe_results = [{"status": "done"}, {"status": "done"}]
@@ -198,6 +231,17 @@ class ElyWebsiteSkinTests(unittest.TestCase):
         self.assertEqual(sum("call('/skins/upload'" in script for script in self.window.scripts), 1)
         self.assertEqual(self.window.loaded_urls, [ely_skins.ELY_LOGIN_PAGE])
         self.assertEqual(len(self.window.confirmations), 2)
+
+    def test_upload_http_error_reports_the_failing_ely_endpoint(self):
+        self.window.upload_results = [
+            {"status": "failed", "message": "POST /skins/upload: HTTP 404"}
+        ]
+
+        result = ely_skins.apply_ely_skin(self.account, self.png, "classic")
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "POST /skins/upload: HTTP 404")
+        self.assertTrue(self.window.destroyed)
 
     def test_model_failure_reports_uploaded_but_unapplied_and_does_not_wear(self):
         self.window.model_results = [{"status": "failed", "message": "edit refused"}]

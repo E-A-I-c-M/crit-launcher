@@ -18,6 +18,7 @@ _LOGIN_TIMEOUT = 10 * 60
 _EVALUATE_TIMEOUT = 120
 _POLL_INTERVAL = 0.5
 _SITE_LOCK = threading.Lock()
+_SITE_SESSION = None
 
 
 # Ely.by reports `error_login` for this non-existent skin ID when its website
@@ -43,6 +44,7 @@ _SESSION_PROBE = r"""(async () => {
 
 _REQUEST_HELPERS = r"""
 const call = async (path, init = {}) => {
+  const method = String(init.method || 'GET').toUpperCase();
   const response = await fetch(path, {
     ...init,
     credentials: 'same-origin',
@@ -54,9 +56,9 @@ const call = async (path, init = {}) => {
   const text = await response.text();
   let json = null;
   try { json = JSON.parse(text); } catch (_) {}
-  return { response, json };
+  return { response, json, path, method };
 };
-const problem = ({ response, json }) => {
+const problem = ({ response, json, path, method }) => {
   const redirectedToLogin = response.redirected &&
     /\/authorization(?:\/|$)/.test(new URL(response.url).pathname);
   if ((json && json.error === 'error_login') || redirectedToLogin) {
@@ -64,12 +66,11 @@ const problem = ({ response, json }) => {
   }
   if (!response.ok || (json && json.error)) {
     const message = json && (json.text || json.error);
-    return {
-      status: 'failed',
-      message: message
-        ? String(message).replace(/<[^>]*>/g, '').slice(0, 300)
-        : `HTTP ${response.status}`,
-    };
+    const detail = message
+      ? String(message).replace(/<[^>]*>/g, '').slice(0, 300)
+      : `HTTP ${response.status}`;
+    const address = path ? new URL(path, location.origin).pathname : 'Ely.by';
+    return { status: 'failed', message: `${method} ${address}: ${detail}` };
   }
   return null;
 };
@@ -120,7 +121,7 @@ def _model_script(skin_id: int, variant: str):
     return {{ status: 'signed_out' }};
   }}
   if (!pageResponse.ok) {{
-    return {{ status: 'failed', message: `HTTP ${{pageResponse.status}}` }};
+    return {{ status: 'failed', message: `GET /skins/s${{id}}/edit: HTTP ${{pageResponse.status}}` }};
   }}
   const page = await pageResponse.text();
   const found = page.match(/alight\.service\.skin\s*=\s*(\{{[\s\S]*?\}});/);
@@ -226,20 +227,33 @@ def _wait_for_login(window, closed, account_name: str):
 
     while time.monotonic() < deadline:
         if closed.is_set():
-            return "cancelled"
+            return "cancelled", None
         url = _website_url(window)
         if closed.is_set():
-            return "cancelled"
+            return "cancelled", None
         if _is_ely_page(url):
             try:
                 result = _evaluate(window, _SESSION_PROBE)
             except Exception:
                 result = None
-            if result and result.get("status") != "signed_out":
-                return "signed_in"
+            if result and result.get("status") == "done":
+                return "signed_in", None
+            if result and result.get("status") == "failed":
+                return "failed", result.get("message")
         time.sleep(_POLL_INTERVAL)
 
-    return "timeout"
+    return "timeout", None
+
+
+def _login_error(status, detail=None):
+    if status == "timeout":
+        return "Ely.by sign-in timed out. No skin change was applied."
+    if status == "failed":
+        message = "Couldn't verify the Ely.by website session."
+        if detail:
+            message += f" {detail}"
+        return message + " No skin change was applied."
+    return "Ely.by sign-in was cancelled. No skin change was applied."
 
 
 def _result_error(result, uploaded=False):
@@ -265,11 +279,10 @@ def _run_step(window, closed, account_name: str, script):
     if result.get("status") != "signed_out":
         return result
 
-    login = _wait_for_login(window, closed, account_name)
+    login, login_detail = _wait_for_login(window, closed, account_name)
     if login != "signed_in":
-        if login == "timeout":
-            return {"status": "failed", "message": "Ely.by sign-in timed out. No skin change was applied."}
-        return {"status": "cancelled", "message": "Ely.by sign-in was cancelled. No skin change was applied."}
+        status = "cancelled" if login == "cancelled" else "failed"
+        return {"status": status, "message": _login_error(login, login_detail)}
     if not _confirm_account(window, account_name):
         window.set_title("Ely.by — switch accounts or close this window")
         return {
@@ -292,6 +305,8 @@ def _run_step(window, closed, account_name: str, script):
 
 def apply_ely_skin(account: dict, png: bytes, variant: str):
     """Upload a validated PNG, set its Ely.by model, then wear it on that account."""
+    global _SITE_SESSION
+
     account_name = str((account or {}).get("name") or "").strip()
     if not account_name:
         return {"success": False, "error": "The Ely.by account has no username."}
@@ -307,21 +322,34 @@ def apply_ely_skin(account: dict, png: bytes, variant: str):
         closed = threading.Event()
         keep_window_open = False
         try:
-            window = webview.create_window(
-                f"Ely.by — apply skin to {account_name}",
-                ELY_SKINS_PAGE,
-                width=900,
-                height=700,
-                min_size=(560, 480),
-                resizable=True,
-                background_color="#ffffff",
-            )
+            if _SITE_SESSION is not None:
+                existing_window, existing_closed = _SITE_SESSION
+                if existing_closed.is_set():
+                    _SITE_SESSION = None
+                else:
+                    window, closed = existing_window, existing_closed
+                    try:
+                        window.show()
+                    except Exception:
+                        pass
+
             if window is None:
-                return {"success": False, "error": "Couldn't open Ely.by. No skin change was applied."}
-            try:
-                window.events.closed += lambda *args: closed.set()
-            except Exception:
-                pass
+                window = webview.create_window(
+                    f"Ely.by — apply skin to {account_name}",
+                    ELY_SKINS_PAGE,
+                    width=900,
+                    height=700,
+                    min_size=(560, 480),
+                    resizable=True,
+                    background_color="#ffffff",
+                )
+                if window is None:
+                    return {"success": False, "error": "Couldn't open Ely.by. No skin change was applied."}
+                try:
+                    window.events.closed += lambda *args: closed.set()
+                except Exception:
+                    pass
+                _SITE_SESSION = (window, closed)
 
             if closed.is_set():
                 return {"success": False, "error": "The Ely.by window was closed. No skin change was applied."}
@@ -339,23 +367,17 @@ def apply_ely_skin(account: dict, png: bytes, variant: str):
                 }
 
             if host == "account.ely.by":
-                login = _wait_for_login(window, closed, account_name)
+                login, login_detail = _wait_for_login(window, closed, account_name)
                 if login != "signed_in":
-                    if login == "timeout":
-                        message = "Ely.by sign-in timed out. No skin change was applied."
-                    else:
-                        message = "Ely.by sign-in was cancelled. No skin change was applied."
-                    return {"success": False, "error": message}
+                    return {"success": False, "error": _login_error(login, login_detail)}
             else:
                 probe = _evaluate(window, _SESSION_PROBE)
+                if probe.get("status") == "failed":
+                    return _result_error(probe)
                 if probe.get("status") == "signed_out":
-                    login = _wait_for_login(window, closed, account_name)
+                    login, login_detail = _wait_for_login(window, closed, account_name)
                     if login != "signed_in":
-                        if login == "timeout":
-                            message = "Ely.by sign-in timed out. No skin change was applied."
-                        else:
-                            message = "Ely.by sign-in was cancelled. No skin change was applied."
-                        return {"success": False, "error": message}
+                        return {"success": False, "error": _login_error(login, login_detail)}
 
             if not _confirm_account(window, account_name):
                 keep_window_open = True
@@ -401,3 +423,5 @@ def apply_ely_skin(account: dict, png: bytes, variant: str):
                     window.destroy()
                 except Exception:
                     pass
+                if _SITE_SESSION is not None and _SITE_SESSION[0] is window:
+                    _SITE_SESSION = None
