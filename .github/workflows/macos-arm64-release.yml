@@ -2,6 +2,8 @@ name: macOS Apple Silicon release
 
 on:
   push:
+    branches:
+      - "arena/cef7e8f3-crit-launcher"
     tags:
       - "v1.8-macos"
 
@@ -60,7 +62,17 @@ jobs:
           plutil -lint "dist/macos/Crit Launcher.app/Contents/Resources/entitlements.plist"
           hdiutil verify dist/macos/Crit-Launcher-Installer.dmg
 
+      - name: Upload the Apple Silicon DMG build artifact
+        if: github.ref_type == 'branch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Crit-Launcher-Installer-apple-silicon-${{ github.sha }}
+          path: dist/macos/Crit-Launcher-Installer.dmg
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Attach the DMG and publish the release
+        if: github.ref == 'refs/tags/v1.8-macos'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

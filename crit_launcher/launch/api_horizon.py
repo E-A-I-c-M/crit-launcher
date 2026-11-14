@@ -17,6 +17,7 @@ from ..core.progress import ProgressTracker
 from ..core.system import CREATE_NO_WINDOW
 from ..horizon.layout import horizon_exe
 from ..horizon.setup import horizon_setup
+from ..horizon.skins import prepare_horizon_ely_skin
 from ..instances.store import (
     ensure_game_layout,
     instance_dir,
@@ -29,13 +30,14 @@ from ..instances.store import (
 class HorizonLaunchApi:
     """Launching Horizon builds."""
 
-    def _horizon_worker(self, name, then_launch=False):
-        """Installs Horizon, Java and Minecraft, then prepares the game's resources for one instance."""
+    def _horizon_worker(self, name, then_launch=False, require_offline_skin=False):
+        """Install Horizon, optionally requiring its Ely.by offline-skin support."""
         try:
             self.emit("installStarted", {"instance": name,
                                          "title": f"Setting up Horizon for {name}..."})
             tracker = ProgressTracker(self.emit)
-            info = horizon_setup(name, tracker)
+            info = horizon_setup(
+                name, tracker, require_offline_skin=require_offline_skin)
             update_instance_meta(name, lambda m: m.update(info))
             message = f"Horizon is ready in {name}"
             if not info.get("horizon_sounds"):
@@ -106,6 +108,13 @@ class HorizonLaunchApi:
                 cmd += ["--name", str(account.get("name"))]
             env = dict(os.environ)
             env["HORIZON_HOME"] = str(game_dir)
+            if account and account.get("type") == "ely":
+                offline_skin = prepare_horizon_ely_skin(instance_name, account)
+                if offline_skin:
+                    skin_path, skin_model = offline_skin
+                    env["HORIZON_OFFLINE_SKIN"] = str(skin_path)
+                    env["HORIZON_OFFLINE_SKIN_MODEL"] = skin_model
+                    logging.info("Providing the Ely.by skin to Horizon (%s model)", skin_model)
 
             log_path = instance_dir(instance_name) / "launch_output.log"
             log_file = open(log_path, "wb")

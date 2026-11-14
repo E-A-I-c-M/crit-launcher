@@ -17,10 +17,11 @@ from .releases import horizon_install_build
 from .sounds import HORIZON_SOUNDS_OK, horizon_copy_sounds
 
 
-def horizon_setup(name: str, tracker) -> dict:
+def horizon_setup(name: str, tracker, require_offline_skin=False) -> dict:
     """Install and prepare everything one Horizon instance needs. Returns the meta to save."""
     meta = read_instance_meta(name) or {}
-    build_version, vdir = horizon_install_build(tracker)
+    build_version, vdir = horizon_install_build(
+        tracker, require_offline_skin=require_offline_skin)
     mc_version = horizon_minecraft_version(vdir)
     resources = horizon_resources_dir(vdir)
 

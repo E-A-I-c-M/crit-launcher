@@ -37,6 +37,23 @@ def horizon_version_label(release: dict) -> str:
     return ("nightly-%s-%s" % (date, commit)) if commit else ("nightly-%s" % date)
 
 
+def horizon_supports_offline_skin(version: str | None) -> bool:
+    """Whether a Horizon build reads the launcher's offline-skin environment.
+
+    The hook first shipped in the 2026-10-30 nightly; the next stable game
+    build is expected to include it from v0.2.98 onward. Older installs must
+    be refreshed before the launcher can supply Ely.by skins.
+    """
+    value = str(version or "").strip().lower()
+    nightly = re.match(r"^nightly-(\d{4}-\d{2}-\d{2})(?:-|$)", value)
+    if nightly:
+        return nightly.group(1) >= "2026-10-30"
+    stable = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", value)
+    if not stable:
+        return False
+    return tuple(map(int, stable.groups())) >= (0, 2, 98)
+
+
 def horizon_releases(asset_name: str) -> list:
     try:
         data = http_get_json(HORIZON_API + "/releases?per_page=100", timeout=30)
@@ -119,13 +136,19 @@ def horizon_unpack(archive: Path, dest: Path):
             tf.extractall(dest)
 
 
-def horizon_install_build(tracker):
+def horizon_install_build(tracker, require_offline_skin=False):
     """Download, verify and unpack Horizon's newest signed build. Returns (version, folder)."""
     asset_name = horizon_asset_name()
     if not asset_name:
         raise RuntimeError("Horizon has no build for %s %s. It supports Windows x64, Linux x86-64 "
                            "and macOS Apple Silicon." % (platform.system(), platform.machine()))
     releases = horizon_releases(asset_name)
+    if require_offline_skin:
+        releases = [entry for entry in releases
+                    if horizon_supports_offline_skin(entry["version"])]
+        if not releases:
+            raise RuntimeError("A Horizon build with offline-skin support isn't available yet. "
+                               "Try again after Horizon publishes its next compatible build.")
     if not releases:
         raise RuntimeError("Horizon has no installable build for this system right now.")
     for entry in releases:

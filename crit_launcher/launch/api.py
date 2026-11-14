@@ -14,6 +14,7 @@ from ..core.logs import log_exception
 from ..core.memory import clamp_memory_mb
 from ..core.progress import ProgressTracker
 from ..core.system import CREATE_NO_WINDOW
+from ..horizon.releases import horizon_supports_offline_skin
 from ..horizon.sounds import horizon_sounds_pending
 from ..instances.playtime import _bump_playtime
 from ..instances.store import (
@@ -46,14 +47,29 @@ class LaunchApi:
                 return {"success": False, "error": "Instance not found."}
             if meta.get("loader") == "horizon":
                 saved = meta.get("horizon_resources")
+                skin_capable = horizon_supports_offline_skin(meta.get("horizon_version"))
+                needs_ely_skin = False
+                try:
+                    accounts = accounts_store.read()
+                    settings = settings_store.read()
+                    account = find_account(accounts, settings.get("active_account"))
+                    if not account and accounts:
+                        account = accounts[0]
+                    needs_ely_skin = bool(account and account.get("type") == "ely")
+                except Exception:
+                    logging.exception("checking Horizon's offline-skin support")
                 if (meta.get("horizon_prepared") and saved and Path(saved).is_dir()
-                        and not horizon_sounds_pending(saved)):
+                        and not horizon_sounds_pending(saved)
+                        and (skin_capable or not needs_ely_skin)):
                     return self._do_horizon_launch(instance_name, meta)
                 with self._proc_lock:
                     self._installing.add(instance_name)
                 self.push_state()
-                threading.Thread(target=self._horizon_worker, args=(instance_name, True),
-                                 daemon=True).start()
+                threading.Thread(
+                    target=self._horizon_worker,
+                    args=(instance_name, True, needs_ely_skin),
+                    daemon=True,
+                ).start()
                 return {"success": True, "installing": True}
 
             accounts = accounts_store.read()
