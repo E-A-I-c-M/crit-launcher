@@ -52,6 +52,17 @@ jobs:
         run: |
           app="dist/macos/Crit Launcher.app/Contents/MacOS/Crit Launcher"
           if ! "$app" --check-https; then
+            {
+              echo "### Packaged HTTPS smoke-test failure"
+              echo '```text'
+              if [ -f "$CRIT_LAUNCHER_DATA/launcher.log" ]; then
+                tail -n 160 "$CRIT_LAUNCHER_DATA/launcher.log"
+              else
+                echo "No launcher.log was created in $CRIT_LAUNCHER_DATA"
+                ls -la "$CRIT_LAUNCHER_DATA" || true
+              fi
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
             cat "$CRIT_LAUNCHER_DATA/launcher.log" || true
             exit 1
           fi
