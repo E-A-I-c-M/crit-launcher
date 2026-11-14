@@ -12,7 +12,7 @@ import time
 from urllib.parse import urlparse
 
 
-ELY_SKINS_PAGE = "https://ely.by/skins"
+ELY_SKINS_PAGE = "https://ely.by/"
 ELY_LOGIN_PAGE = "https://ely.by/authorization/login"
 _LOGIN_TIMEOUT = 10 * 60
 _POLL_INTERVAL = 0.5
@@ -158,13 +158,19 @@ def _website_url(window):
         return ""
 
 
-def _is_ely_page(url: str) -> bool:
+def _secure_ely_host(url: str):
     try:
         parsed = urlparse(url)
         port = parsed.port
     except (TypeError, ValueError):
-        return False
-    return parsed.scheme == "https" and parsed.hostname == "ely.by" and port in (None, 443)
+        return None
+    if parsed.scheme != "https" or port not in (None, 443):
+        return None
+    return parsed.hostname
+
+
+def _is_ely_page(url: str) -> bool:
+    return _secure_ely_host(url) == "ely.by"
 
 
 def _evaluate(window, script):
@@ -293,11 +299,19 @@ def apply_ely_skin(account: dict, png: bytes, variant: str):
             if closed.is_set():
                 return {"success": False, "error": "The Ely.by window was closed. No skin change was applied."}
             url = _website_url(window)
-            if not _is_ely_page(url):
-                return {"success": False, "error": "Ely.by did not open securely. No skin change was applied."}
+            host = _secure_ely_host(url)
+            if host == "www.ely.by":
+                # Use the canonical origin for same-origin skin requests.
+                window.load_url(ELY_SKINS_PAGE)
+                url = _website_url(window)
+                host = _secure_ely_host(url)
+            if host not in ("ely.by", "account.ely.by"):
+                return {
+                    "success": False,
+                    "error": "Couldn't load Ely.by over HTTPS. No skin change was applied.",
+                }
 
-            probe = _evaluate(window, _SESSION_PROBE)
-            if probe.get("status") == "signed_out":
+            if host == "account.ely.by":
                 login = _wait_for_login(window, closed, account_name)
                 if login != "signed_in":
                     if login == "timeout":
@@ -305,6 +319,16 @@ def apply_ely_skin(account: dict, png: bytes, variant: str):
                     else:
                         message = "Ely.by sign-in was cancelled. No skin change was applied."
                     return {"success": False, "error": message}
+            else:
+                probe = _evaluate(window, _SESSION_PROBE)
+                if probe.get("status") == "signed_out":
+                    login = _wait_for_login(window, closed, account_name)
+                    if login != "signed_in":
+                        if login == "timeout":
+                            message = "Ely.by sign-in timed out. No skin change was applied."
+                        else:
+                            message = "Ely.by sign-in was cancelled. No skin change was applied."
+                        return {"success": False, "error": message}
 
             if not _confirm_account(window, account_name):
                 keep_window_open = True

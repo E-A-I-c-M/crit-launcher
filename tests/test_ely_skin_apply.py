@@ -100,9 +100,13 @@ class ElyWebsiteSkinTests(unittest.TestCase):
         self.account = {"type": "ely", "name": "grokkyguy", "mc_token": "launcher-token"}
         self.png = _png()
         self.window = _FakeWindow()
-        self.webview = types.SimpleNamespace(
-            create_window=lambda *args, **kwargs: self.window,
-        )
+        self.create_window_calls = []
+
+        def create_window(*args, **kwargs):
+            self.create_window_calls.append((args, kwargs))
+            return self.window
+
+        self.webview = types.SimpleNamespace(create_window=create_window)
         self.webview_patch = patch.dict(sys.modules, {"webview": self.webview})
         self.webview_patch.start()
         self.addCleanup(self.webview_patch.stop)
@@ -111,6 +115,7 @@ class ElyWebsiteSkinTests(unittest.TestCase):
         result = ely_skins.apply_ely_skin(self.account, self.png, "slim")
 
         self.assertEqual(result, {"success": True})
+        self.assertEqual(self.create_window_calls[0][0][1], "https://ely.by/")
         self.assertEqual(len(self.window.confirmations), 1)
         self.assertIn("grokkyguy", self.window.confirmations[0][1])
         self.assertEqual(len(self.window.loaded_urls), 0)
@@ -135,6 +140,25 @@ class ElyWebsiteSkinTests(unittest.TestCase):
         self.assertEqual(len(self.window.confirmations), 1)
         self.assertEqual(len(self.window.scripts), 5)
         self.assertTrue(self.window.destroyed)
+
+    def test_handles_ely_single_sign_on_redirect_before_login(self):
+        self.window.url = "https://account.ely.by/authorization/login"
+
+        result = ely_skins.apply_ely_skin(self.account, self.png, "classic")
+
+        self.assertEqual(result, {"success": True})
+        self.assertEqual(self.window.loaded_urls, [ely_skins.ELY_LOGIN_PAGE])
+        self.assertEqual(len(self.window.confirmations), 1)
+        self.assertEqual(len(self.window.scripts), 4)  # login probe, upload, model, wear
+
+    def test_normalizes_www_ely_by_to_canonical_origin(self):
+        self.window.url = "https://www.ely.by/skins"
+
+        result = ely_skins.apply_ely_skin(self.account, self.png, "classic")
+
+        self.assertEqual(result, {"success": True})
+        self.assertEqual(self.window.loaded_urls, [ely_skins.ELY_SKINS_PAGE])
+        self.assertEqual(len(self.window.scripts), 4)  # session probe, upload, model, wear
 
     def test_cancelled_account_confirmation_makes_no_change(self):
         self.window.confirm = False
@@ -169,13 +193,18 @@ class ElyWebsiteSkinTests(unittest.TestCase):
         self.assertFalse(any("call('/skins/wear'" in script for script in self.window.scripts))
 
     def test_refuses_non_https_or_foreign_ely_page(self):
-        for url in ("http://ely.by/skins", "https://ely.by.evil/skins", "https://ely.by:8443/skins"):
+        for url in (
+            "http://ely.by/skins",
+            "https://ely.by.evil/skins",
+            "https://account.ely.by.evil/authorization/login",
+            "https://ely.by:8443/skins",
+        ):
             with self.subTest(url=url):
                 self.window = _FakeWindow(url=url)
                 result = ely_skins.apply_ely_skin(self.account, self.png, "classic")
 
                 self.assertFalse(result["success"])
-                self.assertIn("securely", result["error"])
+                self.assertIn("HTTPS", result["error"])
                 self.assertEqual(self.window.scripts, [])
                 self.assertTrue(self.window.destroyed)
 
