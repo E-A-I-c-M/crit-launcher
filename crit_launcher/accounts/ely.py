@@ -118,6 +118,13 @@ _ELY_SKIN_TTL = 5
 _ELY_SKIN_MISS_TTL = 60
 
 
+def invalidate_ely_skin_cache(name: str):
+    """Drop the short-lived cached texture after a skin change succeeds."""
+    key = (name or "").strip().lower()
+    if key:
+        _ELY_SKIN_CACHE.pop(key, None)
+
+
 def ely_skin_for(name: str):
     """Skin and cape for one nick, via the bridge because the png has no CORS."""
     key = (name or "").strip().lower()

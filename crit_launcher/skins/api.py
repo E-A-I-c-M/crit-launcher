@@ -6,7 +6,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from ..accounts.ely import ely_skin_for
+from ..accounts.ely import ely_skin_for, invalidate_ely_skin_cache
 from ..accounts.errors import AuthError
 from ..accounts.microsoft import MC_PROFILE_URL
 from ..accounts.session import ensure_fresh_account
@@ -16,6 +16,7 @@ from ..config.settings import settings_store
 from ..core.http import http_get_auth, http_send
 from ..core.images import decode_png_uri
 from ..core.logs import log_exception
+from .ely import apply_ely_skin
 from .library import list_saved_skins, skins_index
 from .sources import _skin_url_ok
 from .textures import (
@@ -31,12 +32,12 @@ from .textures import (
 class SkinsApi:
     """Skins and capes of the signed-in account, plus the saved-skin library."""
 
-    def _skin_account(self):
+    def _skin_account(self, refresh=True):
         accounts = accounts_store.read()
         acc = find_account(accounts, settings_store.read().get("active_account")) or (accounts[0] if accounts else None)
         if not acc or acc.get("type") not in ("microsoft", "ely"):
             raise AuthError("Skins and capes need a Microsoft or Ely.by account. Add one under Accounts.")
-        return ensure_fresh_account(acc)
+        return ensure_fresh_account(acc) if refresh else acc
 
     def get_live_skins(self, names, active=None):
         try:
@@ -104,7 +105,14 @@ class SkinsApi:
         try:
             png = decode_png_uri(image)
             variant = "slim" if variant == "slim" else "classic"
-            acc = self._skin_account()
+            acc = self._skin_account(refresh=False)
+            if acc.get("type") == "ely":
+                result = apply_ely_skin(acc, png, variant)
+                if result.get("success"):
+                    invalidate_ely_skin_cache(acc.get("name"))
+                return result
+
+            acc = ensure_fresh_account(acc)
             body, ctype = multipart_skin(variant, png)
             status, _ = http_send("POST", MC_SKINS_URL, acc["mc_token"], body, ctype)
             if status in (200, 204):
