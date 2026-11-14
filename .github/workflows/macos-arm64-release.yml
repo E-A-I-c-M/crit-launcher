@@ -41,6 +41,9 @@ jobs:
             exit 1
           fi
 
+      - name: Run regression tests
+        run: build/macos/venv/bin/python -m unittest discover -s tests
+
       - name: Smoke-test HTTPS in the packaged app
         env:
           CRIT_LAUNCHER_DATA: ${{ runner.temp }}/crit-launcher-tls-smoke

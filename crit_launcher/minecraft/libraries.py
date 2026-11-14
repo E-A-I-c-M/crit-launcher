@@ -2,7 +2,9 @@
 
 import re
 import shutil
+import threading
 import time
+import weakref
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
@@ -14,6 +16,20 @@ from ..core.logs import log_exception
 from ..core.system import current_arch, current_os_name
 from .constants import LIBRARIES_BASE_URL
 from .rules import rules_allow
+
+
+_DOWNLOAD_LOCKS = weakref.WeakValueDictionary()
+_DOWNLOAD_LOCKS_GUARD = threading.Lock()
+
+
+def _destination_download_lock(path: Path):
+    key = str(path.absolute())
+    with _DOWNLOAD_LOCKS_GUARD:
+        lock = _DOWNLOAD_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _DOWNLOAD_LOCKS[key] = lock
+        return lock
 
 
 def maven_to_path(name: str) -> str:
@@ -119,27 +135,32 @@ def entry_weight(entry: dict) -> int:
     return int(entry.get("size") or 300_000)
 
 
-def ensure_file(entry: dict, dest_root: Path, tracker, retries: int = 3):
+def ensure_file(entry: dict, dest_root: Path, tracker, retries: int = 5):
     dest = dest_root / entry["path"]
-    quick_sha = None if entry.get("quick") else entry.get("sha1")
-    if file_is_valid(dest, entry.get("size"), quick_sha):
-        return dest
-    if not entry.get("url"):
-        raise RuntimeError(f"Failed to download library: {entry['path']} (no URL)")
-
-    def cb(n):
-        if tracker:
-            tracker.add(n)
-
-    last = None
-    for attempt in range(retries):
-        try:
-            http_download(entry["url"], dest, entry.get("size"), entry.get("sha1"), cb)
+    with _destination_download_lock(dest):
+        quick_sha = None if entry.get("quick") else entry.get("sha1")
+        if file_is_valid(dest, entry.get("size"), quick_sha):
+            if tracker:
+                tracker.add(entry_weight(entry))
             return dest
-        except Exception as exc:
-            last = exc
-            time.sleep(1.0 * (attempt + 1))
-    raise RuntimeError(f"Failed to download {entry['path']} ({last})") from last
+        if not entry.get("url"):
+            raise RuntimeError(f"Failed to download library: {entry['path']} (no URL)")
+
+        def cb(n):
+            if tracker:
+                tracker.add(n)
+
+        last = None
+        attempts = max(1, int(retries))
+        for attempt in range(attempts):
+            try:
+                http_download(entry["url"], dest, entry.get("size"), entry.get("sha1"), cb)
+                return dest
+            except Exception as exc:
+                last = exc
+                if attempt + 1 < attempts:
+                    time.sleep(min(8.0, 2.0 ** attempt))
+        raise RuntimeError(f"Failed to download {entry['path']} ({last})") from last
 
 
 def download_all(items, tracker, workers: int = 10):

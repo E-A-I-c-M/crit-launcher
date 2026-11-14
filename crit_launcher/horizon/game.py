@@ -104,7 +104,7 @@ def horizon_ensure_minecraft(mc_version: str, tracker, pinned=None):
     tracker.set_task(f"Downloading Minecraft {mc_version} libraries", force=True)
     download_all([(e, root / "libraries") for e in libraries.values()], tracker)
     tracker.set_task(f"Downloading Minecraft {mc_version} assets", force=True)
-    download_all([(e, root / "assets" / "objects") for e in assets.values()], tracker, workers=16)
+    download_all([(e, root / "assets" / "objects") for e in assets.values()], tracker, workers=8)
     done.write_text(str(time.time()), encoding="utf-8")
     return root, vjson
 

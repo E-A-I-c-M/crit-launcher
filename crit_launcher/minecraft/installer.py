@@ -201,7 +201,7 @@ class Installer:
             download_all(lib_items, tracker)
 
             tracker.set_task("Downloading assets", force=True)
-            download_all(asset_items, tracker, workers=16)
+            download_all(asset_items, tracker, workers=8)
 
             post = plan.get("post")
             if post:

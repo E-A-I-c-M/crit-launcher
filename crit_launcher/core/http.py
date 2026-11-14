@@ -2,6 +2,7 @@
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -11,6 +12,8 @@ from .fsutil import file_sha1, file_sha256
 
 
 USER_AGENT = "CritLauncher/1.0 (+https://critlauncher.xyz)"
+# Cap active file transfers process-wide; multiple concurrent instance installs share assets.
+_DOWNLOAD_SLOTS = threading.BoundedSemaphore(8)
 
 
 def http_get_json(url: str, timeout: int = 20, retries: int = 2):
@@ -67,14 +70,15 @@ def http_download(url: str, dest: Path, expected_size=None, expected_sha1=None,
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": user_agent or USER_AGENT})
-    with urllib.request.urlopen(req, timeout=30) as resp, open(tmp, "wb") as f:
-        while True:
-            chunk = resp.read(chunk_size)
-            if not chunk:
-                break
-            f.write(chunk)
-            if progress_cb:
-                progress_cb(len(chunk))
+    with _DOWNLOAD_SLOTS:
+        with urllib.request.urlopen(req, timeout=30) as resp, open(tmp, "wb") as f:
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                if progress_cb:
+                    progress_cb(len(chunk))
     if expected_sha1:
         # 40 hex chars is sha1 (Mojang), 64 is sha256 (signed update sums, pinned jars).
         digest = file_sha256 if len(expected_sha1) == 64 else file_sha1
