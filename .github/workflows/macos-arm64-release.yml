@@ -2,8 +2,6 @@ name: macOS Apple Silicon release
 
 on:
   push:
-    branches:
-      - "arena/cef7e8f3-crit-launcher"
     tags:
       - "v1.8-macos"
 
@@ -79,14 +77,11 @@ jobs:
           hdiutil verify dist/macos/Crit-Launcher-Installer.dmg
 
       - name: Attach the DMG and publish the release
-        if: >-
-          github.ref == 'refs/tags/v1.8-macos' ||
-          (github.ref == 'refs/heads/arena/cef7e8f3-crit-launcher' &&
-          contains(github.event.head_commit.message, '[publish-v1.8-macos]'))
+        if: github.ref == 'refs/tags/v1.8-macos'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v1.8-macos"
+          tag="${GITHUB_REF_NAME}"
           asset="dist/macos/Crit-Launcher-Installer.dmg"
           title="Crit Launcher 1.8 for macOS (Apple Silicon)"
           notes="Crit Launcher 1.8 Apple Silicon build. The DMG is ad-hoc signed, not Developer ID signed or notarized; macOS may require approval on first launch."
