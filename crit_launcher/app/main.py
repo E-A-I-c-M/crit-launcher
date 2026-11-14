@@ -15,6 +15,19 @@ from .facade import API
 
 def main():
     init_environment()
+    if sys.argv[1:] == ["--check-https"]:
+        # CI runs this from the frozen macOS executable to validate native trust-store HTTPS.
+        from ..core.http import http_get_json
+        from ..updates.changelog import CHANGELOG_REPO
+
+        try:
+            http_get_json(
+                f"https://api.github.com/repos/{CHANGELOG_REPO}/releases/latest",
+                timeout=15, retries=0)
+            return 0
+        except Exception:
+            log_exception("HTTPS smoke test")
+            return 1
     if len(sys.argv) >= 3 and sys.argv[1] == "--launch-instance":
         instance_name = " ".join(sys.argv[2:])
         api = API()

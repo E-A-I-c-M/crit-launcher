@@ -41,6 +41,16 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke-test HTTPS in the packaged app
+        env:
+          CRIT_LAUNCHER_DATA: ${{ runner.temp }}/crit-launcher-tls-smoke
+        run: |
+          app="dist/macos/Crit Launcher.app/Contents/MacOS/Crit Launcher"
+          if ! "$app" --check-https; then
+            cat "$CRIT_LAUNCHER_DATA/launcher.log" || true
+            exit 1
+          fi
+
       - name: Verify the app entitlements and DMG
         run: |
           test -f "dist/macos/Crit Launcher.app/Contents/Resources/entitlements.plist"

@@ -55,7 +55,7 @@ Build on a Mac with Python 3.11 or newer:
 ./packaging/macos/build.sh
 ```
 
-The script creates an isolated build environment, writes `dist/macos/Crit Launcher.app`, and packages a drag-and-drop disk image: `Crit-Launcher-Installer.dmg` on Apple Silicon or `Crit-Launcher-Installer-x86_64.dmg` on Intel. It bundles the UI and artwork, selects Cocoa/WKWebView, and applies an ad-hoc code signature. PyInstaller builds for the architecture of the selected Python interpreter; build separately on Intel and Apple Silicon Macs if you need both architectures. The `macos-arm64-release.yml` workflow builds and publishes the Apple Silicon DMG on a GitHub-hosted ARM64 Mac runner when tag `v1.8-macos` is pushed. The existing `v1.8` source tag predates this port, so the platform-specific tag avoids moving it.
+The script creates an isolated build environment, writes `dist/macos/Crit Launcher.app`, and packages a drag-and-drop disk image: `Crit-Launcher-Installer.dmg` on Apple Silicon or `Crit-Launcher-Installer-x86_64.dmg` on Intel. It bundles the UI and artwork, uses macOS’s native certificate trust store for verified HTTPS requests, selects Cocoa/WKWebView, and applies an ad-hoc code signature. PyInstaller builds for the architecture of the selected Python interpreter; build separately on Intel and Apple Silicon Macs if you need both architectures. The `macos-arm64-release.yml` workflow builds and publishes the Apple Silicon DMG on a GitHub-hosted ARM64 Mac runner when tag `v1.8-macos` is pushed. The existing `v1.8` source tag predates this port, so the platform-specific tag avoids moving it.
 
 On an Apple Silicon Mac, download the latest published ARM64 release with:
 

@@ -73,6 +73,42 @@ class MacOSPathTests(unittest.TestCase):
 
 
 class MacOSIntegrationTests(unittest.TestCase):
+    def test_frozen_https_smoke_option_checks_the_changelog_endpoint(self):
+        from importlib import import_module
+
+        app_main = import_module("crit_launcher.app.main")
+        endpoint = "https://api.github.com/repos/snigglaberry/crit-launcher/releases/latest"
+        with patch.object(app_main, "init_environment"), \
+                patch.object(app_main.sys, "argv", ["crit", "--check-https"]), \
+                patch("crit_launcher.core.http.http_get_json", return_value={"tag_name": "v1.8"}) as get_json:
+            self.assertEqual(app_main.main(), 0)
+        get_json.assert_called_once_with(endpoint, timeout=15, retries=0)
+
+        with patch.object(app_main, "init_environment"), \
+                patch.object(app_main.sys, "argv", ["crit", "--check-https"]), \
+                patch("crit_launcher.core.http.http_get_json", side_effect=OSError("offline")), \
+                patch.object(app_main, "log_exception") as log_exception:
+            self.assertEqual(app_main.main(), 1)
+        log_exception.assert_called_once_with("HTTPS smoke test")
+
+    def test_frozen_macos_installs_native_trust_store_for_https(self):
+        from types import SimpleNamespace
+        from crit_launcher import bootstrap
+
+        calls = []
+        fake_truststore = SimpleNamespace(inject_into_ssl=lambda: calls.append(True))
+        with patch.dict(sys.modules, {"truststore": fake_truststore}), \
+                patch.object(bootstrap, "IS_OSX", True), \
+                patch.object(bootstrap.sys, "frozen", True, create=True), \
+                patch.dict(os.environ, {"SSL_CERT_FILE": ""}):
+            os.environ.pop("SSL_CERT_FILE")
+            bootstrap._configure_packaged_macos_trust_store()
+        self.assertEqual(calls, [True])
+
+        build_script = (ROOT / "packaging" / "macos" / "build.sh").read_text(encoding="utf-8")
+        self.assertIn("psutil truststore", build_script)
+        self.assertIn("--collect-submodules truststore", build_script)
+
     def test_entitlements_are_bundled_and_used_for_signing(self):
         entitlements_path = ROOT / "packaging" / "macos" / "entitlements.plist"
         entitlements = plistlib.loads(entitlements_path.read_bytes())

@@ -50,7 +50,7 @@ esac
 echo "==> Building a $ARCH macOS app (Python $($PY --version 2>&1))"
 echo "==> Installing build/runtime dependencies"
 "$PY" -m pip install --quiet --upgrade pip
-"$PY" -m pip install --quiet pyinstaller pywebview pillow psutil
+"$PY" -m pip install --quiet pyinstaller pywebview pillow psutil truststore
 
 echo "==> Building $APP"
 "$PY" -m PyInstaller --noconfirm --clean --onefile --windowed \
@@ -63,6 +63,7 @@ echo "==> Building $APP"
     --add-data "$ROOT/assets:assets" \
     --hidden-import webview.platforms.cocoa \
     --collect-submodules webview \
+    --collect-submodules truststore \
     "$ROOT/crit.py"
 
 if [[ ! -d "$APP" ]]; then
