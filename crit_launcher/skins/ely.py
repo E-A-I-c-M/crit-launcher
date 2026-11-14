@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 ELY_SKINS_PAGE = "https://ely.by/"
 ELY_LOGIN_PAGE = "https://ely.by/authorization/login"
 _LOGIN_TIMEOUT = 10 * 60
+_EVALUATE_TIMEOUT = 120
 _POLL_INTERVAL = 0.5
 _SITE_LOCK = threading.Lock()
 
@@ -174,7 +175,33 @@ def _is_ely_page(url: str) -> bool:
 
 
 def _evaluate(window, script):
-    result = window.evaluate_js(script)
+    safe_script = f"""(async () => {{
+  try {{
+    return await ({script});
+  }} catch (error) {{
+    const message = error && error.message ? error.message : String(error);
+    return {{ status: 'failed', message: ('Ely.by request failed: ' + String(message)).slice(0, 300) }};
+  }}
+}})()"""
+    completed = threading.Event()
+    callback_result = {}
+
+    def receive_result(result):
+        callback_result["value"] = result
+        completed.set()
+
+    immediate_result = window.evaluate_js(safe_script, callback=receive_result)
+    if completed.is_set():
+        result = callback_result.get("value")
+    elif isinstance(immediate_result, dict) and immediate_result.get("status") in (
+        "done", "signed_out", "failed"
+    ):
+        result = immediate_result
+    elif completed.wait(_EVALUATE_TIMEOUT):
+        result = callback_result.get("value")
+    else:
+        raise RuntimeError("Ely.by did not finish its request in time.")
+
     if not isinstance(result, dict) or result.get("status") not in ("done", "signed_out", "failed"):
         raise RuntimeError("Ely.by returned an unreadable response.")
     return result

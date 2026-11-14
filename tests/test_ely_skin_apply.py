@@ -3,6 +3,7 @@
 import base64
 import struct
 import sys
+import threading
 import types
 import unittest
 import zlib
@@ -64,17 +65,23 @@ class _FakeWindow:
     def get_current_url(self):
         return self.url
 
-    def evaluate_js(self, script):
+    def evaluate_js(self, script, callback=None):
         self.scripts.append(script)
         if "'/skins/remove/0'" in script:
-            return self.probe_results.pop(0)
-        if "call('/skins/upload'" in script:
-            return self.upload_results.pop(0)
-        if "`/skins/s${id}/edit`" in script:
-            return self.model_results.pop(0)
-        if "call('/skins/wear'" in script:
-            return self.wear_results.pop(0)
-        raise AssertionError("Unexpected script sent to Ely.by window")
+            result = self.probe_results.pop(0)
+        elif "call('/skins/upload'" in script:
+            result = self.upload_results.pop(0)
+        elif "`/skins/s${id}/edit`" in script:
+            result = self.model_results.pop(0)
+        elif "call('/skins/wear'" in script:
+            result = self.wear_results.pop(0)
+        else:
+            raise AssertionError("Unexpected script sent to Ely.by window")
+
+        if callback is not None:
+            callback(result)
+            return True
+        return result
 
     def set_title(self, title):
         self.titles.append(title)
@@ -110,6 +117,16 @@ class ElyWebsiteSkinTests(unittest.TestCase):
         self.webview_patch = patch.dict(sys.modules, {"webview": self.webview})
         self.webview_patch.start()
         self.addCleanup(self.webview_patch.stop)
+
+    def test_evaluate_waits_for_pywebview_promise_callback(self):
+        class AsyncWindow:
+            def evaluate_js(self, script, callback=None):
+                threading.Timer(0.01, callback, args=({"status": "done"},)).start()
+                return True
+
+        result = ely_skins._evaluate(AsyncWindow(), "Promise.resolve({status: 'done'})")
+
+        self.assertEqual(result, {"status": "done"})
 
     def test_upload_sets_model_and_wears_skin_in_ely_session(self):
         result = ely_skins.apply_ely_skin(self.account, self.png, "slim")
