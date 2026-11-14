@@ -57,8 +57,13 @@ jobs:
               echo '```text'
               if [ -f "$CRIT_LAUNCHER_DATA/launcher.log" ]; then
                 tail -n 160 "$CRIT_LAUNCHER_DATA/launcher.log"
+                diagnostic="$(tail -n 80 "$CRIT_LAUNCHER_DATA/launcher.log" | tr '\n' ' ' | cut -c1-12000)"
+                diagnostic="${diagnostic//'%'/'%25'}"
+                diagnostic="${diagnostic//$'\r'/'%0D'}"
+                echo "::error title=Packaged HTTPS log::${diagnostic}"
               else
                 echo "No launcher.log was created in $CRIT_LAUNCHER_DATA"
+                echo "::error title=Packaged HTTPS log::No launcher.log was created"
                 ls -la "$CRIT_LAUNCHER_DATA" || true
               fi
               echo '```'

@@ -23,7 +23,7 @@ def main():
         try:
             http_get_json(
                 f"https://api.github.com/repos/{CHANGELOG_REPO}/releases/latest",
-                timeout=15, retries=0)
+                timeout=15, retries=2)
             return 0
         except Exception:
             log_exception("HTTPS smoke test")

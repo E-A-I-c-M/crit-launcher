@@ -82,7 +82,7 @@ class MacOSIntegrationTests(unittest.TestCase):
                 patch.object(app_main.sys, "argv", ["crit", "--check-https"]), \
                 patch("crit_launcher.core.http.http_get_json", return_value={"tag_name": "v1.8"}) as get_json:
             self.assertEqual(app_main.main(), 0)
-        get_json.assert_called_once_with(endpoint, timeout=15, retries=0)
+        get_json.assert_called_once_with(endpoint, timeout=15, retries=2)
 
         with patch.object(app_main, "init_environment"), \
                 patch.object(app_main.sys, "argv", ["crit", "--check-https"]), \
