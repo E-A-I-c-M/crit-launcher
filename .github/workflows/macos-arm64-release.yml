@@ -87,18 +87,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Replace the published v1.8 Apple Silicon installer
-        if: github.ref_type == 'branch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          asset="dist/macos/Crit-Launcher-Installer.dmg"
-          title="Crit Launcher 1.8 for macOS (Apple Silicon)"
-          notes="Crit Launcher 1.8 Apple Silicon build, rebuilt from ${GITHUB_SHA} with Ely.by Horizon skin support. The DMG is ad-hoc signed, not Developer ID signed or notarized; macOS may require approval on first launch."
-          gh release upload v1.8-macos "$asset" --clobber
-          gh release edit v1.8-macos --title "$title" --notes "$notes" --draft=false
-
       - name: Attach the DMG and publish the release
         if: github.ref == 'refs/tags/v1.8-macos'
         env:
