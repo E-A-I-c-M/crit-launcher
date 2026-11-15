@@ -1,14 +1,13 @@
 """JS-bridge API: Crit Client."""
 
 import logging
-import shutil
 import urllib.parse
 from pathlib import Path
 
 from ..core.http import http_download, http_get_json
 from ..core.logs import log_exception
 from ..core.progress import ProgressTracker
-from ..instances.store import instance_dir, instance_mods_dir
+from ..instances.store import instance_mods_dir
 from .critclient import CRIT_CLIENT_BASE, CRIT_CLIENT_MODS, CRIT_CLIENT_VERSIONS_URL
 
 
@@ -86,10 +85,12 @@ class CritClientApi:
             tracker.add(1)
 
             self.emit("installFinished", {"instance": name, "message": f"Crit Client installed into {name}"})
+
         except Exception as exc:
             log_exception("crit client install failed")
-            shutil.rmtree(instance_dir(name), ignore_errors=True)
-            self.emit("installError", {"message": f"Crit Client install failed: {exc}"})
+            self.emit("installError", {
+                "message": f"Crit Client install failed: {exc}"
+            })
         finally:
             with self._proc_lock:
                 self._installing.discard(name)
